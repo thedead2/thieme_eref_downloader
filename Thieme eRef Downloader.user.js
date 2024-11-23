@@ -39,7 +39,7 @@
     function updateProgressUI(text, current, total) {
         let progressContainer = document.getElementById("progressContainer");
         if (progressContainer) {
-            progressContainer.innerText = `${text}: ${current} / ${total}`;
+            progressContainer.innerText = `${text}: ${(current / total * 100).toFixed(0)} %`;
         }
     }
 
