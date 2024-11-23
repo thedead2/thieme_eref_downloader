@@ -7,7 +7,7 @@ This Thieme eRef Downloader does all that for you in a fraction of the time, wit
 ## How to use it?
 1. You need valid authentication to access the books in Thieme eRef (e.g. through your institution or an active subscription).
 2. You need to install a browser extension that can execute JavaScript code directly on a website (e.g. [Userscripts for Safari](https://github.com/quoid/userscripts) or [Tampermonkey for Firefox, Chrome, etc.](https://www.tampermonkey.net/index.php?locale=en)). *Make sure you enable it!*
-3. Download the Thieme eRef Downloader.user.js file and place it in your browser extension's script location. Or simply copy the raw code and paste it into the editor of the browser extension of your choice.
+3. Download the `Thieme eRef Downloader.user.js` file and place it in your browser extension's script location. Or simply copy the raw code and paste it into the editor of the browser extension of your choice.
 4. Go to Thieme eRef, find the book you want to download and under the `PDF` section you will find a `Download All` button.
 5. Press the button and wait until the downloader notifies you, that your download is complete. The progress of your download will be displayed in the bottom right corner of your browser window.
 
