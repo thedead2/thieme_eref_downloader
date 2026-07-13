@@ -25,5 +25,4 @@ This Thieme eRef Downloader does all that for you in a fraction of the time, wit
 > You might find that there are missing pages in the final pdf. These missing pages are generally completely white pages without any content. This is due to the way the script compares the content of pdf pages and can not be avoided but as these pages have no content this is no problem!
 
 > [!CAUTION]
-> ## Disclaimer
 > Use at your own risk. This project is for educational purposes only. I am not responsible for any misuse of the software. Depending on your jurisdiction, it may be illegal to use this software to download the e-books in their entirety without the publisher's permission. In other jurisdictions, it may be legal to download e-books for personal use only. Please check your local laws before using this software.
