@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Thieme eRef Downloader
-// @version      1.4
+// @version      1.5
 // @description  Download all PDFs and merge them into a single file
 // @author       The_Dead_2, Revezd
 // @include      https://eref.thieme.de/ebooks/*
@@ -17,32 +17,56 @@
     let indx = 0;
     let timeout = 60000;
 
-    console.log(name);
-
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
     console.log("Worker online");
 
 
     function createProgressUI() {
+        removeProgressUI(); 
+
         let progressContainer = document.createElement("div");
         progressContainer.id = "progressContainer";
+        
         progressContainer.style.position = "fixed";
-        progressContainer.style.bottom = "10px";
-        progressContainer.style.right = "10px";
-        progressContainer.style.backgroundColor = "rgba(0,0,0,0.7)";
-        progressContainer.style.color = "white";
-        progressContainer.style.padding = "10px";
-        progressContainer.style.borderRadius = "5px";
-        progressContainer.style.zIndex = "1000";
+        progressContainer.style.inset = "auto 20px 20px auto"; 
+        progressContainer.style.margin = "0";
+
+        progressContainer.style.backgroundColor = "rgba(0, 0, 0, 0.85)";
+        progressContainer.style.color = "#ffffff";
+        progressContainer.style.padding = "12px 16px";
+        progressContainer.style.borderRadius = "8px";
+        progressContainer.style.boxShadow = "0 4px 12px rgba(0,0,0,0.5)";
+        progressContainer.style.fontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
         progressContainer.style.fontSize = "14px";
+        progressContainer.style.fontWeight = "bold";
+        progressContainer.style.zIndex = "2147483647"; 
+        progressContainer.style.pointerEvents = "none"; 
+        
         progressContainer.innerText = "Downloading: 0 / 0";
-        document.body.appendChild(progressContainer);
+
+        
+        if (HTMLElement.prototype.hasOwnProperty("popover")) {
+            progressContainer.popover = "manual";
+            document.body.appendChild(progressContainer);
+            progressContainer.showPopover();
+        } 
+        else {
+            const t = document.querySelector('t-dialog[dialog-id="pdfDialog"]');
+            const dialogEl = t && t.shadowRoot ? t.shadowRoot.querySelector('dialog') : null;
+            
+            if (dialogEl && dialogEl.hasAttribute('open')) {
+                dialogEl.appendChild(progressContainer);
+            } 
+            else {
+                document.body.appendChild(progressContainer);
+            }
+        }
     }
 
     function updateProgressUI(text, current, total) {
         let progressContainer = document.getElementById("progressContainer");
         if (progressContainer) {
-            progressContainer.innerText = `${text}: ${(current / total * 100).toFixed(0)} %`;
+            progressContainer.innerText = `${text} (${(current / total * 100).toFixed(0)} %)`;
         }
     }
 
@@ -70,67 +94,6 @@
         observer.observe(document.body, { childList: true, subtree: true });
     }
 
-    function downloadAndMergePDFs(files) {
-        if (files.length > 0) {
-            updateProgressUI("Downloading", 0, files.length);
-
-            downloadAllPDFs(files).then((pdfBlobs) => {
-                if (pdfBlobs.length > 0) {
-                    mergeAllPDFs(pdfBlobs);
-                } else {
-                    alert("Couldn't find any valid pdfs!");
-                    removeProgressUI();
-                }
-            }).catch((error) => {
-                alert("Couldn't download or merge pdfs:\n" + error);
-                console.error("Couldn't download or merge pdfs:", error);
-                removeProgressUI();
-            });
-        } else {
-            alert("Couldn't find any pdfs to download!");
-        }
-    }
-
-    async function downloadAllPDFs(files) {
-        let downloadedCount = 0;
-
-        const pdfBlobs = await Promise.all(
-            files.map(async (file) => {
-                const downloadPromise = fetch(file.download)
-                    .then((response) => {
-                        if (!response.ok) throw new Error(`Error fetching: ${file.filename}`);
-
-                        downloadedCount++;
-                        updateProgressUI("Downloading", downloadedCount, files.length);
-
-                        return response.blob();
-                    });
-
-                const timeoutPromise = new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error(`Network Timeout for: ${file.filename}`)), timeout)
-                );
-
-                return await Promise.race([downloadPromise, timeoutPromise]);
-            })
-        );
-
-        return pdfBlobs.filter((blob) => blob !== null);
-    }
-
-    async function extractTextFromPDF(arrayBuffer) {
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        const textContents = [];
-
-        for (let pageIndex = 1; pageIndex <= pdf.numPages; pageIndex++) {
-            const page = await pdf.getPage(pageIndex);
-            const textContent = await page.getTextContent();
-            const pageText = textContent.items.map((item) => item.str).join(" ");
-            textContents.push(pageText);
-        }
-
-        return textContents;
-    }
-
     function hashString(string) {
         let hash = 0;
         for (let i = 0; i < string.length; i++) {
@@ -141,44 +104,127 @@
         return hash;
     }
 
-    async function mergeAllPDFs(pdfBlobs) {
-        const mergedPdf = await PDFLib.PDFDocument.create();
-        const uniquePages = new Set();
-        let mergedCount = 0;
+    function truncateString(str, num) {
+    if (str.length > num) {
+        return str.slice(0, num) + "...";
+    } else {
+        return str;
+    }
+}
 
-        for (const pdfBlob of pdfBlobs) {
-            const pdfArrayBuffer = await pdfBlob.arrayBuffer();
-            const textContents = await extractTextFromPDF(pdfArrayBuffer);
+    async function extractTextFromPDF(arrayBuffer) {
+        const CMAP_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@2.16.105/cmaps/';
 
-            for (let i = 0; i < textContents.length; i++) {
-                const pageHash = hashString(textContents[i]);
+        const loadingTask = pdfjsLib.getDocument({ 
+            data: arrayBuffer,
+            cMapUrl: CMAP_URL,
+            cMapPacked: true,
+            disableFontFace: true 
+        });
+        
+        const pdf = await loadingTask.promise;
+        const textContents = [];
 
-                if (!uniquePages.has(pageHash)) {
-                    uniquePages.add(pageHash);
-
-                    const pdfDoc = await PDFLib.PDFDocument.load(pdfArrayBuffer);
-                    const [copiedPage] = await mergedPdf.copyPages(pdfDoc, [i]);
-                    mergedPdf.addPage(copiedPage);
-                }
+        for (let pageIndex = 1; pageIndex <= pdf.numPages; pageIndex++) {
+            try {
+                const page = await pdf.getPage(pageIndex);
+                const textContent = await page.getTextContent();
+                const pageText = textContent.items.map((item) => item.str).join(" ");
+                textContents.push(pageText);
+                
+                page.cleanup();
+            } catch (e) {
+                console.warn(`Warning: Could not extract text for page ${pageIndex}. Skipping deduplication for this page.`, e);
+                textContents.push(`Fallback_Page_${pageIndex}_${Math.random()}`); 
             }
-
-            mergedCount++;
-            updateProgressUI("Merging", mergedCount, pdfBlobs.length);
         }
 
-        const mergedPdfBytes = await mergedPdf.save();
-        const mergedBlob = new Blob([mergedPdfBytes], { type: "application/pdf" });
-        const downloadUrl = URL.createObjectURL(mergedBlob);
-        const a = document.createElement("a");
-        a.href = downloadUrl;
-        a.download = `${name}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        URL.revokeObjectURL(downloadUrl);
-        a.remove();
+        await loadingTask.destroy();
 
-        alert("Download complete!");
-        removeProgressUI();
+        return textContents;
+    }
+
+    async function downloadAndMergePDFs(files) {
+        if (files.length === 0) {
+            alert("Couldn't find any pdfs to download!");
+            return;
+        }
+
+        updateProgressUI("Starting process...", 0, files.length);
+
+        try {
+            const mergedPdf = await PDFLib.PDFDocument.create();
+            const uniquePages = new Set();
+            let processedCount = 0;
+
+            for (const file of files) {
+                const shortName = truncateString(file.filename, 30);
+                updateProgressUI(`Processing: ${shortName}`, processedCount + 1, files.length);
+
+                let pdfBlob = await downloadPDF(file);
+                let pdfArrayBuffer = await pdfBlob.arrayBuffer();
+
+                const textContents = await extractTextFromPDF(pdfArrayBuffer);
+
+                let pdfDoc = await PDFLib.PDFDocument.load(pdfArrayBuffer);
+                for (let i = 0; i < textContents.length; i++) {
+                    const pageHash = hashString(textContents[i]);
+
+                    if (!uniquePages.has(pageHash)) {
+                        uniquePages.add(pageHash);
+                        const [copiedPage] = await mergedPdf.copyPages(pdfDoc, [i]);
+                        mergedPdf.addPage(copiedPage);
+                    }
+                }
+
+                pdfDoc = null;
+                pdfArrayBuffer = null;
+                pdfBlob = null;
+
+                await new Promise(resolve => setTimeout(resolve, 150));
+                
+                processedCount++;
+            }
+
+            updateProgressUI("Generating final PDF... (This may take a moment)", processedCount, files.length);
+
+            const mergedPdfBytes = await mergedPdf.save({ useObjectStreams: false });
+            const mergedBlob = new Blob([mergedPdfBytes], { type: "application/pdf" });
+            
+            const downloadUrl = URL.createObjectURL(mergedBlob);
+            const a = document.createElement("a");
+            a.href = downloadUrl;
+            a.download = `${name}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            
+            URL.revokeObjectURL(downloadUrl);
+            a.remove();
+
+            updateProgressUI("Download complete!", processedCount, files.length);
+            await new Promise(resolve => setTimeout(resolve, 5000));
+
+        } 
+        catch (error) {
+            alert("An error occurred while downloading:\n" + error.message);
+            console.error("Error detailing:", error);
+        } 
+        finally {
+            removeProgressUI();
+        }
+    }
+
+    async function downloadPDF(file) {
+        const downloadPromise = fetch(file.download).then((response) => {
+            if (!response.ok) throw new Error(`Error fetching: ${file.filename}`);
+            return response.blob();
+        });
+
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error(`Network Timeout for: ${file.filename}`)), timeout)
+        );
+
+        return await Promise.race([downloadPromise, timeoutPromise]);
     }
 
     function getBaseUrl() {
@@ -220,7 +266,8 @@
             createProgressUI();
             updateProgressUI("Downloading", 0, pdfs.length);
             downloadAndMergePDFs(pdfs);
-        } else {
+        } 
+        else {
             alert("Couldn't find any pdfs to download!");
         }
     }
